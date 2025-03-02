@@ -105,7 +105,7 @@ def Obtener_Informacion_PDF(pdf_path):
       asignaturas_estudiante.columns = columnas
 
     # Periodo
-    periodo_inicio = info_estudiante.loc[info_estudiante[0] == "Periodo de inicio:"][1].values[0]
+    periodo_inicio = info_estudiante.loc[info_estudiante[0] == "Periodo admisión:"][1].values[0]
     asignaturas_estudiante['Periodo'] = None
     periodo_actual = periodo_inicio
 
@@ -239,9 +239,9 @@ def Generar_Lista_Candidatas(asignaturas_estudiante):
     """
     # Concatenar las equivalencias de asignaturas iguales con las de diferentes
     equivalencias_candidatas = pd.concat([equivalencias_candidatas,pd.DataFrame(sqldf(query_6))],axis=0)
-    return equivalencias_candidatas
+    return equivalencias_candidatas.reset_index(drop=True)
 
-def Generar_Estudio(info_estudiante,asignaturas_estudiante,lista_candidatas):
+def Generar_Estudio(asignaturas_estudiante,lista_candidatas):
     # Consulta de agrupaciones
     query_7 = 'SELECT * FROM Agrupaciones_CC'
     agrupaciones = pd.read_sql_query(query_7, Apuntador)
@@ -646,7 +646,7 @@ def Exportar_Estudio(info_estudiante, resumen_general, cursadas_fundamentacion, 
 def Realizar_Estudio(pdf_path):
   info_estudiante, asignaturas_estudiante = Obtener_Informacion_PDF(pdf_path)
   lista_candidatas = Generar_Lista_Candidatas(asignaturas_estudiante)
-  resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t = Generar_Estudio(info_estudiante,asignaturas_estudiante,lista_candidatas)
+  resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t = Generar_Estudio(asignaturas_estudiante,lista_candidatas)
   Exportar_Estudio(info_estudiante,resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t)
 
 def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
