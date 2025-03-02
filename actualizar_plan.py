@@ -279,7 +279,7 @@ class UpdatePlanWindow:
         o_checkbox.configure(command=lambda o=o_var, b=b_var: (self.toggle_checkboxes(o, b), self.update_credit_count()))
 
         delete_btn = ctk.CTkButton(
-            row_frame, text="🗑", width=col_widths[5], height=30, font=("Arial", 14),
+            row_frame, text="🗑", width=30, height=30, font=("Arial", 14),
             hover_color="#FF0000",
             command=lambda r=row_index: self.delete_subject(r)
         )
