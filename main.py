@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import PhotoImage
-from actualizar_plan import UpdatePlanWindow  # Importa la clase desde otro archivo
+from actualizar_plan import UpdatePlanWindow
+from actualizar_equivalencias import UpdateEquivalencesWindow
 
 # Configurar el modo de apariencia
 ctk.set_appearance_mode("Light")
@@ -25,6 +26,9 @@ main_label.pack(pady=10)
 def abrir_actualizar_plan():
     UpdatePlanWindow(root)  # Abre la ventana nueva
 
+def abrir_actualizar_equivalencias():
+    UpdateEquivalencesWindow(root)  # Abre la ventana nueva
+
 # Botones del menú principal
 buttons_text = [
     "Actualizar Plan de Estudios en Origen",
@@ -34,11 +38,18 @@ buttons_text = [
 ]
 
 for text in buttons_text:
-    # Agregar funcionalidad al botón de "Actualizar Plan de Estudios en Origen"
-    command = abrir_actualizar_plan if text == "Actualizar Plan de Estudios en Origen" else None
+    if text == "Actualizar Plan de Estudios en Origen":
+        command = abrir_actualizar_plan
+    elif text == "Actualizar la tabla de equivalencias y convalidaciones":
+        command = abrir_actualizar_equivalencias
+    else:
+        command = None  # Otros botones pueden no tener funcionalidad aún
+
+    # Crear solo un botón por iteración
     button = ctk.CTkButton(root, text=text, font=("Arial", 16), height=40, fg_color="#65C2C6",
                            hover_color="#519899", text_color="black", corner_radius=20, command=command)
     button.pack(fill="x", padx=50, pady=10)
+
 
 # Ejecutar la ventana principal
 root.mainloop()
