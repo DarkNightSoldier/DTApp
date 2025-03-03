@@ -1,8 +1,9 @@
+# main.py
 import customtkinter as ctk
-from tkinter import PhotoImage
 from actualizar_plan import UpdatePlanWindow
 from actualizar_equivalencias import UpdateEquivalencesWindow
 from consultar_estudiantes import ConsultarEstudiantesWindow
+from realizar_estudio import NuevoEstudioWindow
 
 # Configurar el modo de apariencia
 ctk.set_appearance_mode("Light")
@@ -23,15 +24,22 @@ main_label = ctk.CTkLabel(root, text="¡Bienvenido al aplicativo de manejo de\nD
                           font=("Arial", 20, "bold"), text_color="black", justify="center")
 main_label.pack(pady=10)
 
-# Función para abrir la ventana de "Actualizar Plan de Estudios en Origen"
+# Funciones para abrir nuevas ventanas
 def abrir_actualizar_plan():
-    UpdatePlanWindow(root)  # Abre la ventana nueva
+    root.withdraw()  # Oculta la ventana principal
+    UpdatePlanWindow(root)  # Abre la ventana de actualizar plan
 
 def abrir_actualizar_equivalencias():
-    UpdateEquivalencesWindow(root)  # Abre la ventana nueva
+    root.withdraw()  # Oculta la ventana principal
+    UpdateEquivalencesWindow(root)  # Abre la ventana de equivalencias
 
 def consultar_estudiantes_aprobados():
-    ConsultarEstudiantesWindow(root)  # Abre la ventana nueva
+    root.withdraw()  # Oculta la ventana principal
+    ConsultarEstudiantesWindow(root)  # Abre la ventana para consultar estudiantes
+
+def abrir_nuevo_estudio():
+    root.withdraw()  # Oculta la ventana principal
+    NuevoEstudioWindow(root)  # Abre la ventana para realizar el estudio de doble titulación
 
 # Botones del menú principal
 buttons_text = [
@@ -48,6 +56,8 @@ for text in buttons_text:
         command = abrir_actualizar_equivalencias 
     elif text == "Consultar y actualizar Historias Académicas en DT":
         command = consultar_estudiantes_aprobados
+    elif text == "Realizar un nuevo estudio de Doble Titulación":
+        command = abrir_nuevo_estudio
     else:
         command = None  # Otros botones pueden no tener funcionalidad aún
 
@@ -55,7 +65,6 @@ for text in buttons_text:
     button = ctk.CTkButton(root, text=text, font=("Arial", 16), height=40, fg_color="#65C2C6",
                            hover_color="#519899", text_color="black", corner_radius=20, command=command)
     button.pack(fill="x", padx=50, pady=10)
-
 
 # Ejecutar la ventana principal
 root.mainloop()
