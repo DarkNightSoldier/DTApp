@@ -30,15 +30,15 @@ def abrir_actualizar_plan():
     UpdatePlanWindow(root)  # Abre la ventana de actualizar plan
 
 def abrir_actualizar_equivalencias():
-    root.withdraw()  # Oculta la ventana principal
+    #root.withdraw()  # Oculta la ventana principal
     UpdateEquivalencesWindow(root)  # Abre la ventana de equivalencias
 
 def consultar_estudiantes_aprobados():
-    root.withdraw()  # Oculta la ventana principal
+    #root.withdraw()  # Oculta la ventana principal
     ConsultarEstudiantesWindow(root)  # Abre la ventana para consultar estudiantes
 
 def abrir_nuevo_estudio():
-    root.withdraw()  # Oculta la ventana principal
+    #root.withdraw()  # Oculta la ventana principal
     NuevoEstudioWindow(root)  # Abre la ventana para realizar el estudio de doble titulación
 
 # Botones del menú principal
