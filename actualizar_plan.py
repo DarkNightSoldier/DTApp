@@ -18,7 +18,8 @@ class PlanData:
 
 class UpdatePlanWindow:
     def __init__(self, parent):
-        components = cargar_componentes()
+        self.parent = parent  # Guarda una referencia a la ventana principal
+        components = cargar_componentes()  # Carga los componentes desde la base de datos
         self.plan_data = PlanData(components)
 
         self.window = Toplevel(parent)
@@ -29,9 +30,11 @@ class UpdatePlanWindow:
         self.grouping_var = StringVar()
         self.current_grouping_name = None  # Nombre de la agrupación seleccionada
 
+        # Encabezado
         header_frame = ctk.CTkFrame(self.window, fg_color="#65C2C6", corner_radius=8)
         header_frame.pack(fill="x", pady=(10, 5))
 
+        # Botón para regresar al menú principal
         menu_button = ctk.CTkButton(
             header_frame,
             text="Menú principal",
@@ -40,10 +43,11 @@ class UpdatePlanWindow:
             text_color="black",
             hover_color="#E0E0E0",
             corner_radius=8,
-            command=self.return_to_main_menu
+            command=self.return_to_main_menu  # Regresar al menú principal
         )
         menu_button.pack(side="left", padx=10, pady=10)
 
+        # Título del programa
         title_label = ctk.CTkLabel(
             header_frame,
             text="Programa: Ciencias de la Computación (2933)",
@@ -579,7 +583,9 @@ class UpdatePlanWindow:
         self.refresh_summary()
 
     def return_to_main_menu(self):
-        pass
+        """Función para regresar al menú principal."""
+        self.window.destroy()  # Cierra la ventana actual
+        self.parent.deiconify()  # Muestra la ventana principal de nuevo
 
 if __name__ == "__main__":
     root = ctk.CTk()
