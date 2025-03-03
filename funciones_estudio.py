@@ -643,11 +643,13 @@ def Exportar_Estudio(info_estudiante, resumen_general, cursadas_fundamentacion, 
     nombre_estudiante = info_estudiante.loc[info_estudiante[0] == "Nombre:"][1].values[0]
     doc.save(f"Estudios/{nombre_estudiante}_estudio_dt.docx")
 
+    return f"Estudios/{nombre_estudiante}_estudio_dt.docx"
+
 def Realizar_Estudio(pdf_path):
   info_estudiante, asignaturas_estudiante = Obtener_Informacion_PDF(pdf_path)
   lista_candidatas = Generar_Lista_Candidatas(asignaturas_estudiante)
   resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t = Generar_Estudio(asignaturas_estudiante,lista_candidatas)
-  Exportar_Estudio(info_estudiante,resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t)
+  return Exportar_Estudio(info_estudiante,resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t)
 
 def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
   info_estudiante_origen, asignaturas_estudiante_origen = Obtener_Informacion_PDF(pdf_plan_origen)
