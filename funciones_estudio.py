@@ -657,7 +657,7 @@ def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
 
   lista_candidatas_origen = Generar_Lista_Candidatas(asignaturas_estudiante_origen)
 
-  resumen_general_origen, cursadas_fund_origen, cursadas_disc_origen, libre_cursadas_origen, pendientes_b_origen, pendientes_o_origen, pendientes_disc_origen, pendientes_t_origen = Generar_Estudio(info_estudiante_origen, asignaturas_estudiante_origen, lista_candidatas_origen)
+  resumen_general_origen, cursadas_fund_origen, cursadas_disc_origen, libre_cursadas_origen, pendientes_b_origen, pendientes_o_origen, pendientes_disc_origen, pendientes_t_origen = Generar_Estudio(asignaturas_estudiante_origen, lista_candidatas_origen)
 
   # Obligatorias B o C
   asignaturas_nuevas = lista_candidatas_origen[(lista_candidatas_origen["Tipo"]=="B") | (lista_candidatas_origen["Tipo"]=="C")]

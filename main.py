@@ -2,6 +2,7 @@ import customtkinter as ctk
 from tkinter import PhotoImage
 from actualizar_plan import UpdatePlanWindow
 from actualizar_equivalencias import UpdateEquivalencesWindow
+from consultar_estudiantes import ConsultarEstudiantesWindow
 
 # Configurar el modo de apariencia
 ctk.set_appearance_mode("Light")
@@ -29,6 +30,9 @@ def abrir_actualizar_plan():
 def abrir_actualizar_equivalencias():
     UpdateEquivalencesWindow(root)  # Abre la ventana nueva
 
+def consultar_estudiantes_aprobados():
+    ConsultarEstudiantesWindow(root)  # Abre la ventana nueva
+
 # Botones del menú principal
 buttons_text = [
     "Actualizar Plan de Estudios en Origen",
@@ -41,7 +45,9 @@ for text in buttons_text:
     if text == "Actualizar Plan de Estudios en Origen":
         command = abrir_actualizar_plan
     elif text == "Actualizar la tabla de equivalencias y convalidaciones":
-        command = abrir_actualizar_equivalencias
+        command = abrir_actualizar_equivalencias 
+    elif text == "Consultar y actualizar Historias Académicas en DT":
+        command = consultar_estudiantes_aprobados
     else:
         command = None  # Otros botones pueden no tener funcionalidad aún
 
