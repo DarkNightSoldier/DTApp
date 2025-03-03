@@ -5,7 +5,6 @@ from tkinter import ttk, messagebox
 
 class UpdateEquivalencesWindow:
     def __init__(self, parent, db_path="DatosApp.db"):
-        self.parent = parent  # Guarda una referencia a la ventana principal
         self.window = ctk.CTkToplevel(parent)
         self.window.title("Actualizar Equivalencias y Convalidaciones")
         self.window.geometry("950x500")
@@ -23,7 +22,7 @@ class UpdateEquivalencesWindow:
             text_color="black",
             hover_color="#E0E0E0",
             corner_radius=8,
-            command=self.return_to_main_menu  # Regresar al menú principal
+            command=self.window.destroy
         )
         menu_button.pack(side="left", padx=10, pady=10)
 
@@ -340,14 +339,6 @@ class UpdateEquivalencesWindow:
         self.add_window.destroy()
         self.load_data()
 
-    def load_data(self):
-        # Implementa la lógica para cargar los datos en la tabla
-        pass
-
-    def return_to_main_menu(self):
-        """Función para regresar al menú principal."""
-        self.window.destroy()  # Cierra la ventana actual
-        self.parent.deiconify()  # Muestra la ventana principal de nuevo
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("Light")
