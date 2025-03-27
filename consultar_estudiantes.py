@@ -287,7 +287,7 @@ class ConsultarEstudiantesWindow:
         """Abre una ventana para añadir un nuevo estudiante aprobado."""
         self.add_window = ctk.CTkToplevel(self.window)
         self.add_window.title("Añadir nuevo estudiante aprobado")
-        self.add_window.geometry("400x330")
+        self.add_window.geometry("400x400")
 
         # Etiqueta e ingreso para Identificacion
         label_ident = ctk.CTkLabel(self.add_window, text="Identificación:")
