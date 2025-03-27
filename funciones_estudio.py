@@ -1,6 +1,7 @@
 import tabula
 import pandas as pd
 import re
+import itertools
 import sqlite3
 from pandasql import sqldf
 import numpy as np
@@ -44,8 +45,12 @@ def Obtener_Informacion_PDF(pdf_path):
     for page in reader.pages:
         text += page.extract_text()
     # Buscar las secciones requeridas usando expresiones regulares
-    creditos_dt = re.search(r"Créditos de estudio doble titulación\s+(\d+)", text).group(1)
-    porcentaje_avance = re.search(r"Porcentaje de avance\s+([\d,.]+%)", text).group(1)
+    try:
+        creditos_dt = re.search(r"Créditos de estudio doble titulación\s+(\d+)", text).group(1)
+    except:
+        # La segunda historia académica (Destino) no tiene créditos de doble titulación
+        creditos_dt = 0
+    porcentaje_avance = re.search(r"Porcentaje de avance\s+([\d,.]+\s?%)", text).group(1)
     creditos_le_pendientes = re.search(r"Libre Elección\s+\d+\s+\d+\s+(\d+)", text).group(1)
     papa = re.search(r"(\d,\d)\s*\(Acumulado\)\s*PREGRADO\s*P\.A\.P\.A", text).group(1).replace(',', '.')
 
@@ -104,26 +109,12 @@ def Obtener_Informacion_PDF(pdf_path):
     else:
       asignaturas_estudiante.columns = columnas
 
-    # Periodo
-    periodo_inicio = info_estudiante.loc[info_estudiante[0] == "Periodo admisión:"][1].values[0]
-    asignaturas_estudiante['Periodo'] = None
-    periodo_actual = periodo_inicio
-
-    for i, row in asignaturas_estudiante.iterrows():
-        asignatura_str = str(row['Asignatura'])
-        if "PERIODO" in asignatura_str:
-            match = re.search(r'(\d{4}-\dS)', asignatura_str)
-            if match:
-                periodo_actual = match.group(1)
-        else:
-            asignaturas_estudiante.at[i, 'Periodo'] = periodo_actual
-
     asignaturas_estudiante = asignaturas_estudiante[~asignaturas_estudiante['Asignatura'].str.contains("PERIODO", na=False)]
 
     # Formatear los datos
-    asignaturas_estudiante["Cod_Asignatura"] = asignaturas_estudiante['Asignatura'].str.extract(r'\(([^)]+)\)')
-    asignaturas_estudiante["Cod_Asignatura"] = asignaturas_estudiante["Cod_Asignatura"].str.extract(r'(\d+)')
+    asignaturas_estudiante["Cod_Asignatura"] = asignaturas_estudiante["Asignatura"].str.extract(r'\((\d+)(?:-[^)]*)?\)')
     asignaturas_estudiante['Cod_Asignatura'] = asignaturas_estudiante['Cod_Asignatura'].fillna(method='bfill')
+
     asignaturas_estudiante['Nom_Asignatura'] = (
         asignaturas_estudiante['Asignatura']
         .str.replace(r'\([^)]*\)', '', regex=True)
@@ -141,6 +132,18 @@ def Obtener_Informacion_PDF(pdf_path):
     # Filtrar asignaturas válidas
     asignaturas_estudiante = asignaturas_estudiante[asignaturas_estudiante['Calificacion'].notna()]
     asignaturas_estudiante = asignaturas_estudiante[asignaturas_estudiante['Anulada'] != 'SI']
+
+    # Llenar datos faltantes
+    for index in asignaturas_estudiante[asignaturas_estudiante["Cod_Asignatura"].isna()].index:
+        exp_regular = f"{asignaturas_estudiante.loc[index,"Nom_Asignatura"]}\s*\((\d+)(?:-[A-Z])?\)"
+        asignaturas_estudiante.loc[index,"Cod_Asignatura"] = re.search(exp_regular, text).group(1)
+
+    # Periodo
+    for i, row in asignaturas_estudiante.iterrows():
+        cod_asignatura = str(row['Cod_Asignatura'])
+        patron = rf'((?:PRIMER|SEGUNDO)\s+PERIODO\s+(\d{{4}}-\d+S))(?:(?!PRIMER\s+PERIODO|SEGUNDO\s+PERIODO).)*?\({cod_asignatura}(?:-[A-Z])?\)'
+        asignaturas_estudiante.at[i, 'Periodo'] = re.search(patron, text, flags=re.DOTALL).group(2)
+
     asignaturas_estudiante = asignaturas_estudiante[asignaturas_estudiante['Calificacion'] >= 3]
     asignaturas_estudiante = asignaturas_estudiante[asignaturas_estudiante["Tipología"] != "Nivelación (E)"]
     # Trabajo de grado no es equivalible ni convalidable
@@ -148,7 +151,6 @@ def Obtener_Informacion_PDF(pdf_path):
 
     # Seleccionar columnas finales
     asignaturas_estudiante = asignaturas_estudiante[['Periodo', 'Cod_Asignatura', 'Nom_Asignatura', 'Creditos', 'Calificacion','Tipología']]
-
     return info_estudiante,asignaturas_estudiante
 
 
@@ -241,7 +243,7 @@ def Generar_Lista_Candidatas(asignaturas_estudiante):
     equivalencias_candidatas = pd.concat([equivalencias_candidatas,pd.DataFrame(sqldf(query_6))],axis=0)
     return equivalencias_candidatas.reset_index(drop=True)
 
-def Generar_Estudio(asignaturas_estudiante,lista_candidatas):
+def Generar_Estudio(asignaturas_estudiante,lista_candidatas,nuevo_estudio=True):
     # Consulta de agrupaciones
     query_7 = 'SELECT * FROM Agrupaciones_CC'
     agrupaciones = pd.read_sql_query(query_7, Apuntador)
@@ -425,29 +427,60 @@ def Generar_Estudio(asignaturas_estudiante,lista_candidatas):
         creditos_contados[creditos_contados["Agrupación"].isin(pendientes_t["Agrupación"])]["Créditos excedentes"].values
     ).clip(lower=0)
 
+    suma_creditos = 0
+    creditos_libre = agrupaciones[agrupaciones["Tipologia"]=="Libre Elección"]["Cant_Optativos"].values[0]
     # Seleccionar en Libre Elección - L las asignaturas a equivaler
     candidatas_libre = asignaturas_estudiante[~(asignaturas_estudiante["Cod_Asignatura"].isin(lista_candidatas["Código"]))]
     # Ordenar por calificación
     candidatas_libre = candidatas_libre.sort_values(by="Calificacion", ascending=False).reset_index(drop=True)
-
-    # Seleccionar en Libre Elección - L las asignaturas a equivaler
-    creditos_libre = agrupaciones[agrupaciones["Tipologia"]=="Libre Elección"]["Cant_Optativos"].values[0]
     cursadas_libre = pd.DataFrame(columns=candidatas_libre.columns)
-    suma_creditos = 0
-    i = 0
-    while suma_creditos<creditos_libre and len(candidatas_libre)>0:
-        # Seleccionar el primer registro - el que tiene mejor nota
-        asignatura = candidatas_libre.iloc[0]
 
-        # Agregarlo a cursadas_libre
-        cursadas_libre = pd.concat([cursadas_libre, pd.DataFrame([asignatura])], ignore_index=True)
-        suma_creditos = suma_creditos + int(asignatura["Creditos"])
-
-        # Eliminar el primer registro de tabla
-        candidatas_libre = candidatas_libre.iloc[1:].reset_index(drop=True)
-
-        # Incrementar el contador
-        i += 1
+    
+    if nuevo_estudio == True:
+        if len(candidatas_libre) > 13:
+            candidatas_libre = candidatas_libre.iloc[:14]
+        # Caso 1: Si la suma total de créditos es menor que creditos_libre, se seleccionan todas las asignaturas.
+        if candidatas_libre["Creditos"].sum() < creditos_libre:
+            cursadas_libre = candidatas_libre.copy()
+        else:
+            best_subset = None
+            best_promedio = -np.inf  # Inicializamos con un promedio muy bajo
+            indices = list(candidatas_libre.index)
+            
+            # Iterar sobre objetivos desde creditos_libre hasta creditos_libre+5
+            for extra in range(0, 6):
+                target = creditos_libre + extra
+                valid_subsets = []  # Almacenará los subconjuntos que sumen el target deseado
+                
+                # Determinar el tamaño mínimo y máximo de las combinaciones a evaluar:
+                # Si hay al menos 4 asignaturas se usan 4; de lo contrario se evalúan todas las disponibles.
+                r_min = 4 if len(indices) >= 4 else 1
+                r_max = min(13, len(indices))
+                
+                for r in range(r_min, r_max + 1):
+                    for comb in itertools.combinations(indices, r):
+                        if candidatas_libre.loc[list(comb), "Creditos"].sum() == target:
+                            valid_subsets.append(comb)
+                            
+                # Si se encontró al menos una combinación que cumple el target, se evalúa el promedio ponderado
+                if valid_subsets:
+                    for comb in valid_subsets:
+                        subset = candidatas_libre.loc[list(comb)]
+                        # Calcular el promedio ponderado: (suma de (Creditos * Calificacion)) / suma de créditos (que es target)
+                        weighted_avg = (subset["Creditos"] * subset["Calificacion"]).sum() / target
+                        if weighted_avg > best_promedio:
+                            best_promedio = weighted_avg
+                            best_subset = comb
+                    # Una vez encontrados subconjuntos para el target actual, se detiene la búsqueda
+                    if best_subset is not None:
+                        break
+            
+            # Si se encontró un subconjunto válido, se selecciona; de lo contrario se retorna un DataFrame vacío.
+            if best_subset is not None:
+                cursadas_libre = candidatas_libre.loc[list(best_subset)]
+            else:
+                cursadas_libre = pd.DataFrame(columns=candidatas_libre.columns)
+        suma_creditos = cursadas_libre["Creditos"].sum()
 
     #Guardar dato de los excedentes
     creditos_contados = pd.concat([creditos_contados, pd.DataFrame([["LIBRE ELECCIÓN", "Libre Elección", suma_creditos, max(suma_creditos-creditos_libre,0)]], columns=["Agrupación","Tipo","Créditos aprobados","Créditos excedentes"])], ignore_index=True)
@@ -500,7 +533,10 @@ def Generar_Estudio(asignaturas_estudiante,lista_candidatas):
     resumen_general.loc[resumen_general["Créditos"] == "Excedentes", "Libre Elección L"] = creditos_contados[creditos_contados["Tipo"]=="Libre Elección"]["Créditos excedentes"].sum()
     resumen_general.loc[resumen_general["Créditos"] == "Excedentes", "Total"] = resumen_general.loc[resumen_general["Créditos"] == "Excedentes", resumen_general.columns[1:]].sum(axis=1)
 
-    return resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t
+    if nuevo_estudio:
+        return resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t
+    else:
+        return creditos_contados
 
 def Exportar_Estudio(info_estudiante, resumen_general, cursadas_fundamentacion, cursadas_disciplinar, libre_cursadas, tabla_pendientes_b, pendientes_o, tabla_pendientes_disciplinar, pendientes_t):
     # Crear el documento Word
@@ -656,8 +692,10 @@ def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
   info_estudiante_cc, asignaturas_estudiante_cc = Obtener_Informacion_PDF(pdf_plan_cc)
 
   lista_candidatas_origen = Generar_Lista_Candidatas(asignaturas_estudiante_origen)
+  lista_asignaturas_cc = Generar_Lista_Candidatas(asignaturas_estudiante_cc)
 
   resumen_general_origen, cursadas_fund_origen, cursadas_disc_origen, libre_cursadas_origen, pendientes_b_origen, pendientes_o_origen, pendientes_disc_origen, pendientes_t_origen = Generar_Estudio(asignaturas_estudiante_origen, lista_candidatas_origen)
+  conteo_creditos_cc = Generar_Estudio(asignaturas_estudiante_cc, lista_asignaturas_cc, nuevo_estudio=False)
 
   # Obligatorias B o C
   asignaturas_nuevas = lista_candidatas_origen[(lista_candidatas_origen["Tipo"]=="B") | (lista_candidatas_origen["Tipo"]=="C")]
@@ -667,32 +705,6 @@ def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
           WHERE Código_CC NOT IN {formatear_tupla(asignaturas_estudiante_cc["Cod_Asignatura"])}"""
   asignaturas_nuevas = pd.DataFrame(sqldf(query_16))
 
-  # Libre Elección L
-  pendientes_le = int(info_estudiante_cc.loc[info_estudiante_cc[0] == "Pendientes Libre Elección"][1].values[0])
-  if pendientes_le>0:
-    libre_asignaturas = libre_cursadas_origen
-    libre_asignaturas["Tipo"] = "L"
-    libre_asignaturas["Agrupación"] = "LIBRE ELECCIÓN"
-    query_17 = f"""
-          SELECT *
-          FROM libre_asignaturas
-          WHERE Código_CC NOT IN {formatear_tupla(asignaturas_estudiante_cc["Cod_Asignatura"])}"""
-    asignaturas = pd.DataFrame(sqldf(query_17)).sort_values(by="Créditos").reset_index(drop=True)
-    suma_creditos = 0
-    i = 0
-    while suma_creditos<pendientes_le and len(asignaturas)>0:
-            asignatura = asignaturas.iloc[0]
-
-            # Agregarlo a asignaturas_nuevas
-            asignaturas_nuevas = pd.concat([asignaturas_nuevas, pd.DataFrame([asignatura])], ignore_index=True)
-            suma_creditos = suma_creditos + int(pd.DataFrame([asignatura])["Créditos"])
-
-            # Eliminar el primer registro de tabla
-            asignaturas = asignaturas[1:].reset_index(drop=True)
-
-            # Incrementar el contador
-            i += 1
-
   # Optativas O y T
   posibles_optativas_nuevas = lista_candidatas_origen[(lista_candidatas_origen["Tipo"]=="O") | (lista_candidatas_origen["Tipo"]=="T")]
   query_18 = f"""
@@ -701,41 +713,19 @@ def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
           WHERE Código_CC NOT IN {formatear_tupla(asignaturas_estudiante_cc["Cod_Asignatura"])}"""
   posibles_optativas_nuevas = pd.DataFrame(sqldf(query_18))
 
-  asignaturas_estudiante_cc["Tipo"] = asignaturas_estudiante_cc["Tipología"].apply(lambda x: re.search(r"\((.*?)\)", x).group(1) if re.search(r"\((.*?)\)", x) else np.nan)
-  optativas_cc = asignaturas_estudiante_cc[(asignaturas_estudiante_cc["Tipo"]=="O") | (asignaturas_estudiante_cc["Tipo"]=="T")]
-
-  query_19 = f"""
-          SELECT
-              Cod_Asignatura_CC as Cod_Asignatura,
-              Nom_Agrupacion
-          FROM Asignaturas_CC
-          WHERE Cod_Asignatura_CC IN {formatear_tupla(optativas_cc["Cod_Asignatura"])}"""
-  agrupaciones_optativas = pd.read_sql_query(query_19, Apuntador)
-
-  query_20 = f"""
-          SELECT
-              optativas_cc.Periodo as 'Periodo Académico',
-              optativas_cc.Cod_Asignatura as 'Código',
-              optativas_cc.Nom_Asignatura as 'Asignatura',
-              agrupaciones_optativas.Cod_Asignatura as 'Código_CC',
-              optativas_cc.Nom_Asignatura as 'Asignatura_CC',
-              agrupaciones_optativas.Nom_Agrupacion as 'Agrupación',
-              optativas_cc.Calificacion as 'Nota',
-              optativas_cc.Tipo as 'Tipo',
-              optativas_cc.Creditos as 'Créditos'
-          FROM optativas_cc
-          JOIN agrupaciones_optativas
-          ON optativas_cc.Cod_Asignatura=agrupaciones_optativas.Cod_Asignatura;"""
-  optativas_cc = pd.DataFrame(sqldf(query_20))
-
   # Consulta de agrupaciones
-  query_20 = 'SELECT * FROM Agrupaciones_CC'
+  query_20 = f"""
+            SELECT 
+                Nom_Agrupacion,
+                Cant_Optativos 
+            FROM Agrupaciones_CC"""  
   agrupaciones = pd.read_sql_query(query_20, Apuntador)
-  agrupaciones = agrupaciones[(agrupaciones["Nom_Agrupacion"] != "TRABAJO DE GRADO") & (agrupaciones["Nom_Agrupacion"] != "LIBRE ELECCIÓN")]
-  for agrupacion in agrupaciones["Nom_Agrupacion"]:
+
+  optativas_cc = lista_asignaturas_cc[(lista_asignaturas_cc["Tipo"]=="O") | (lista_asignaturas_cc["Tipo"]=="T")]
+  for agrupacion in conteo_creditos_cc["Agrupación"]:
       optativas_agrup = optativas_cc[optativas_cc["Agrupación"] == agrupacion]
       if optativas_agrup["Créditos"].sum() < int(agrupaciones.loc[agrupaciones["Nom_Agrupacion"]==agrupacion]["Cant_Optativos"]):
-        asignaturas = posibles_optativas_nuevas[posibles_optativas_nuevas["Agrupación"]==agrupacion].reset_index(drop=True)
+        asignaturas = posibles_optativas_nuevas[posibles_optativas_nuevas["Agrupación"]==agrupacion].reset_index(drop=True).sort_values(by="Nota", ascending=False)
         suma_creditos = 0
         i = 0
         pendientes_agrupacion = int(agrupaciones.loc[agrupaciones["Nom_Agrupacion"]==agrupacion]["Cant_Optativos"]) - optativas_agrup["Créditos"].sum()
@@ -752,4 +742,5 @@ def Actualizar_Historia(pdf_plan_origen,pdf_plan_cc):
 
             # Incrementar el contador
             i += 1
-  return asignaturas_nuevas
+  
+  return asignaturas_nuevas 
