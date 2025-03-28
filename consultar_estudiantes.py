@@ -1,22 +1,23 @@
-# consultar_estudiantes.py
-
 import customtkinter as ctk
 import sqlite3
 import pandas as pd
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, Toplevel, Canvas, Scrollbar, Frame
 from datetime import datetime
 
 class ConsultarEstudiantesWindow:
     def __init__(self, parent, db_path="DatosApp.db"):
-        self.window = ctk.CTkToplevel(parent)
+        self.parent = parent
+        self.window = Toplevel(parent)        
+
         self.window.title("Consulta y actualización: Estudiantes con DT aprobada")
-        self.window.geometry("1050x500")
+        self.window.geometry("1100x900")
         self.db_path = db_path
 
         # Encabezado
         header_frame = ctk.CTkFrame(self.window, fg_color="#65C2C6", corner_radius=8)
-        header_frame.pack(fill="x", pady=(10, 5))
+        header_frame.pack(fill="x", padx=10, pady=(10, 5), anchor="w")
 
+        # Botón para regresar al menú principal
         menu_button = ctk.CTkButton(
             header_frame,
             text="Menú principal",
@@ -25,25 +26,34 @@ class ConsultarEstudiantesWindow:
             text_color="black",
             hover_color="#E0E0E0",
             corner_radius=8,
-            command=self.window.destroy
+            command=self.return_to_main_menu
         )
-        menu_button.pack(side="left", padx=10, pady=10)
+        menu_button.pack(side="left", padx=(10, 5), pady=10, anchor="w")
 
+        # Título del programa
         title_label = ctk.CTkLabel(
             header_frame,
             text="Programa: Ciencias de la Computación (2933)",
             font=("Arial", 16, "bold"),
             text_color="black",
         )
-        title_label.pack(side="left", padx=10)
+        title_label.pack(side="left", padx=(20, 10), pady=10, anchor="w")
 
-        # Título principal
-        main_label = ctk.CTkLabel(
-            self.window,
-            text="Consulta y actualización: Estudiantes con Doble Titulación aprobada",
-            font=("Arial", 18, "bold")
+        # Canvas y scrollbar
+        scroll_canvas = Canvas(self.window)
+        scroll_canvas.pack(side="left", fill="both", expand=True, anchor="w")
+
+        scrollbar = Scrollbar(self.window, command=scroll_canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+
+        scroll_canvas.configure(yscrollcommand=scrollbar.set)
+        scroll_frame = Frame(scroll_canvas)
+        scroll_canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all"))
         )
-        main_label.pack(pady=10)
 
         # Tabla de estudiantes aprobados
         columns = (
@@ -56,7 +66,7 @@ class ConsultarEstudiantesWindow:
             "Eliminar"
         )
 
-        self.tree = ttk.Treeview(self.window, columns=columns, show="headings")
+        self.tree = ttk.Treeview(scroll_frame, columns=columns, show="headings")
         for col in columns:
             self.tree.heading(col, text=col)
             self.tree.column(col, width=140, anchor="center")
@@ -67,21 +77,21 @@ class ConsultarEstudiantesWindow:
         self.tree.column("Actualizar", width=90)
         self.tree.column("Eliminar", width=80)
 
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+        self.tree.pack(fill="both", expand=True, padx=10, pady=10, anchor="w")
 
         # Vinculamos el doble clic a la edición de celdas o acciones
         self.tree.bind("<Double-1>", self.on_double_click)
 
-        # Botón para agregar estudiante
+        # Botón para agregar estudiante (ahora debajo de la tabla)
         add_button = ctk.CTkButton(
-            self.window,
+            scroll_frame,  # Cambiado a scroll_frame para que esté dentro del scroll
             text="Añadir un nuevo estudiante aprobado",
             fg_color="#65C2C6",
             text_color="black",
             font=("Arial", 14, "bold"),
             command=self.add_estudiante
         )
-        add_button.pack(pady=10)
+        add_button.pack(pady=(10, 20), anchor="w")  # Ajusta el padding según sea necesario
 
         self.editing_item = None
         self.load_data()
@@ -115,8 +125,8 @@ class ConsultarEstudiantesWindow:
                     row["Codigo_plan"],
                     row["Resol_apro"],
                     row["Fecha_actualizacion"],
-                    "Actualizar",   # Columna para botón de actualización
-                    "Eliminar"     # Columna para botón de eliminación
+                    "Actualizar",
+                    "Eliminar"
                 )
             )
 
@@ -176,8 +186,6 @@ class ConsultarEstudiantesWindow:
 
         # Ahora, actualizamos en la BD
         current_values = self.tree.item(item_id, "values")
-        # current_values es una tupla en orden: 
-        # (Identificacion, Nombre, Codigo_plan, Resol_apro, Fecha, Actualizar, Eliminar)
         identificacion = current_values[0]
         nombre = current_values[1]
         codigo_plan = current_values[2]
@@ -186,9 +194,7 @@ class ConsultarEstudiantesWindow:
 
         with sqlite3.connect(self.db_path, timeout=5) as conn:
             cursor = conn.cursor()
-            # IMPORTANTE: Si se edita la Identificación (PK), necesitamos manejarlo con cuidado
             if col_name == "Identificacion":
-                # El valor old_value era la PK antigua
                 update_query = """
                     UPDATE Estudiantes_Aprobados
                     SET Identificacion = ?,
@@ -199,15 +205,14 @@ class ConsultarEstudiantesWindow:
                     WHERE Identificacion = ?
                 """
                 cursor.execute(update_query, (
-                    new_value,   # nueva PK
+                    new_value,
                     nombre,
                     codigo_plan,
                     resol_apro,
                     fecha_act,
-                    old_value    # PK vieja
+                    old_value
                 ))
             else:
-                # Actualizamos con la PK actual (identificacion)
                 update_query = f"""
                     UPDATE Estudiantes_Aprobados
                     SET {col_name} = ?
@@ -237,15 +242,11 @@ class ConsultarEstudiantesWindow:
             self.tree.delete(item_id)
 
     def actualizar_estudiante(self, item_id):
-        """
-        Actualiza la fecha de actualización a hoy y abre la ventana real
-        de 'actualizar_estudiante.py' para subir PDFs y mostrar equivalencias.
-        """
+        """Actualiza la fecha de actualización a hoy y abre la ventana real de 'actualizar_estudiante.py'."""
         today = datetime.now().strftime("%d/%m/%Y")
         values = self.tree.item(item_id, "values")
         identificacion = values[0]
 
-        # Actualizar en BD la fecha
         with sqlite3.connect(self.db_path, timeout=5) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -258,24 +259,20 @@ class ConsultarEstudiantesWindow:
             )
             conn.commit()
 
-        # Actualizamos en la tabla Treeview también
         current_list = list(values)
-        current_list[4] = today  # Columna Fecha_actualizacion
+        current_list[4] = today
         self.tree.item(item_id, values=current_list)
 
-        # Abrimos la ventana real de "actualizar_estudiante.py"
         self.open_update_window(item_id)
 
     def open_update_window(self, item_id):
         """Importa y abre la ventana ActualizarEstudianteWindow."""
         from actualizar_estudiante import ActualizarEstudianteWindow
 
-        # Obtenemos la info del estudiante
         values = self.tree.item(item_id, "values")
         identificacion = values[0]
         nombre = values[1]
 
-        # Llamamos a la ventana, pasándole el nombre e identificación
         ActualizarEstudianteWindow(
             parent=self.window,
             nombre_estudiante=nombre,
@@ -335,7 +332,6 @@ class ConsultarEstudiantesWindow:
             )
             return
 
-        # Fecha de actualización = hoy
         fecha_hoy = datetime.now().strftime("%d/%m/%Y")
 
         try:
@@ -353,12 +349,16 @@ class ConsultarEstudiantesWindow:
 
         self.add_window.destroy()
         self.load_data()
-
+    
+    def return_to_main_menu(self):
+        """Función para regresar al menú principal."""
+        self.window.destroy()
+        self.parent.deiconify()
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("Light")
     ctk.set_default_color_theme("blue")
     root = ctk.CTk()
+    root.geometry("1000x700")
     app = ConsultarEstudiantesWindow(root, db_path="DatosApp.db")
     root.mainloop()
-

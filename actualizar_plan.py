@@ -18,13 +18,13 @@ class PlanData:
 
 class UpdatePlanWindow:
     def __init__(self, parent):
-        self.parent = parent  # Guarda una referencia a la ventana principal
-        components = cargar_componentes()  # Carga los componentes desde la base de datos
+        self.parent = parent  
+        components = cargar_componentes()  
         self.plan_data = PlanData(components)
 
         self.window = Toplevel(parent)
         self.window.title("Actualizar Plan de Estudios en Origen")
-        self.window.geometry("1200x700")
+        self.window.geometry("1300x700")
 
         self.selected_component = None
         self.grouping_var = StringVar()
@@ -287,9 +287,13 @@ class UpdatePlanWindow:
         add_button = ctk.CTkButton(
             self.subject_table_frame,
             text="Añadir Asignatura",
-            command=lambda: self.add_subject("Nuevo Código", "Nueva Asignatura", "3")
+            fg_color="#65C2C6",
+            text_color="black",
+            font=("Arial", 14, "bold"),
+            command=lambda: self.add_subject("Nuevo Código", "Nueva Asignatura", "")
         )
         add_button.pack(side="top", padx=5, pady=5)
+
 
         subjects = self.get_subjects_from_db(self.current_grouping_name)
         self.create_subject_table(subjects, self.selected_component)
@@ -411,14 +415,14 @@ class UpdatePlanWindow:
         delete_btn_col = 3
         if component_name not in ["Trabajo de Grado (P)", "Libre Elección (L)"]:
             b_checkbox = ctk.CTkCheckBox(row_frame, variable=b_var, text="", width=col_widths[3], height=30)
-            b_checkbox.grid(row=0, column=3, padx=5, pady=2)
+            b_checkbox.grid(row=0, column=3, padx=(10,5), pady=2)
             o_checkbox = ctk.CTkCheckBox(row_frame, variable=o_var, text="", width=col_widths[4], height=30)
-            o_checkbox.grid(row=0, column=4, padx=5, pady=2)
+            o_checkbox.grid(row=0, column=4, padx=(10,5), pady=2)
             delete_btn_col = 5
 
         delete_btn = ctk.CTkButton(row_frame, text="🗑", width=30, height=30, font=("Arial", 14),
                                    hover_color="#FF0000")
-        delete_btn.grid(row=0, column=delete_btn_col, padx=5, pady=2)
+        delete_btn.grid(row=0, column=delete_btn_col, padx=(10,5), pady=2)
 
         row_data = {
             "frame": row_frame,
@@ -589,6 +593,6 @@ class UpdatePlanWindow:
 
 if __name__ == "__main__":
     root = ctk.CTk()
-    root.geometry("1200x800")
+    root.geometry("1200x700")
     UpdatePlanWindow(root)
     root.mainloop()
