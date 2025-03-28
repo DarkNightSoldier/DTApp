@@ -1,13 +1,17 @@
 import customtkinter as ctk
 import sqlite3
 import pandas as pd
-from tkinter import ttk, messagebox
+from tkinter import messagebox, StringVar
 
 class UpdateEquivalencesWindow:
+    is_open = False  # Para rastrear si la ventana está abierta
+
     def __init__(self, parent, db_path="DatosApp.db"):
+        self.parent = parent
+        self.parent.withdraw()  # Minimiza el menú principal
         self.window = ctk.CTkToplevel(parent)
         self.window.title("Actualizar Equivalencias y Convalidaciones")
-        self.window.geometry("950x500")
+        self.window.geometry("1150x550")
         self.db_path = db_path
 
         # Encabezado
@@ -22,7 +26,7 @@ class UpdateEquivalencesWindow:
             text_color="black",
             hover_color="#E0E0E0",
             corner_radius=8,
-            command=self.window.destroy
+            command=self.return_to_main_menu
         )
         menu_button.pack(side="left", padx=10, pady=10)
 
@@ -34,30 +38,11 @@ class UpdateEquivalencesWindow:
         )
         title_label.pack(side="left", padx=10)
 
-        # Título principal
-        main_label = ctk.CTkLabel(
-            self.window,
-            text="Equivalencias y convalidaciones",
-            font=("Arial", 18, "bold")
-        )
-        main_label.pack(pady=10)
+        # Contenedor para la tabla de equivalencias
+        self.table_container = ctk.CTkFrame(self.window, fg_color="white", corner_radius=8)
+        self.table_container.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Tabla de equivalencias
-        columns = ("Código", "Asignatura", "Código2", "Asignatura2", "Créditos", "Eliminar")
-        self.tree = ttk.Treeview(self.window, columns=columns, show="headings")
-        for col in columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=120, anchor="center")
-        
-        self.tree.column("Asignatura", width=200)
-        self.tree.column("Asignatura2", width=200)
-        self.tree.column("Créditos", width=70)
-        self.tree.column("Eliminar", width=70)
-
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-        self.tree.bind("<Double-1>", self.on_double_click)
-
-        # Botón para agregar equivalencias
+        # Botón para agregar nueva equivalencia
         add_button = ctk.CTkButton(
             self.window,
             text="Agregar equivalencia/convalidación",
@@ -69,276 +54,291 @@ class UpdateEquivalencesWindow:
         add_button.pack(pady=10)
 
         self.load_data()
-        self.editing_item = None
+
+    def return_to_main_menu(self):
+        """Cierra la ventana actual y vuelve a mostrar el menú principal."""
+        self.window.destroy()
+        self.parent.deiconify()
 
     def load_data(self):
-        with sqlite3.connect(self.db_path, timeout=5) as conn:
-            query = """
-                SELECT
-                    e.Cod_Asignatura AS Código,
-                    a1.Nom_Asignatura AS Asignatura,
-                    e.Cod_Asignatura_CC AS Código2,
-                    a2.Nom_Asignatura AS Asignatura2,
-                    a2.Creditos AS Créditos
-                FROM Equivalencias AS e
-                JOIN Asignaturas_Info AS a1 ON e.Cod_Asignatura = a1.Cod_Asignatura
-                JOIN Asignaturas_Info AS a2 ON e.Cod_Asignatura_CC = a2.Cod_Asignatura;
-            """
-            df = pd.read_sql_query(query, conn)
-
-        # Limpiamos la tabla y volvemos a insertar los datos
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-
-        for _, row in df.iterrows():
-            self.tree.insert("", "end", values=(
-                row["Código"],
-                row["Asignatura"],
-                row["Código2"],
-                row["Asignatura2"],
-                row["Créditos"],
-                "🗑️"
-            ))
-
-    def on_double_click(self, event):
-        item_id = self.tree.identify_row(event.y)
-        column_id = self.tree.identify_column(event.x)
-        col_index = int(column_id.replace("#", "")) - 1
-        col_name = self.tree["columns"][col_index]
-
-        if not item_id:
-            return
-
-        if col_name == "Eliminar":
-            self.delete_row(item_id)
-        else:
-            self.edit_cell(item_id, col_name)
-
-    def edit_cell(self, item_id, col_name):
-        x, y, width, height = self.tree.bbox(item_id, col_name)
-        old_value = self.tree.set(item_id, col_name)
-
-        self.entry = ctk.CTkEntry(self.window, width=width, height=height)
-        self.entry.insert(0, old_value)
-        self.entry.focus()
-        self.entry.place(x=self.tree.winfo_x() + x, y=self.tree.winfo_y() + y)
-        self.editing_item = (item_id, col_name, old_value)
-
-        self.entry.bind("<Return>", self.save_edit)
-        self.entry.bind("<FocusOut>", self.save_edit)
-
-    def save_edit(self, event):
-        if not self.editing_item:
-            return
-
-        item_id, col_name, old_value = self.editing_item
-        new_value = self.entry.get()
-        self.entry.destroy()
-        self.editing_item = None
-
-        if new_value == old_value:
-            return
-
-        self.tree.set(item_id, col_name, new_value)
-
-        # Solo actualizamos la base de datos si se cambió Código o Código2
-        if col_name in ("Código", "Código2"):
-            self.update_equivalencias_in_db(item_id, col_name, old_value, new_value)
-
-    def update_equivalencias_in_db(self, item_id, col_name, old_value, new_value):
-        current_values = self.tree.item(item_id, "values")
-        codigo = current_values[0]
-        codigo2 = current_values[2]
-
-        with sqlite3.connect(self.db_path, timeout=5) as conn:
-            cursor = conn.cursor()
-            update_query = """
-                UPDATE Equivalencias
-                SET Cod_Asignatura = ?, Cod_Asignatura_CC = ?
-                WHERE Cod_Asignatura = ? AND Cod_Asignatura_CC = ?
-            """
-            cursor.execute(
-                update_query,
-                (
-                    new_value if col_name == "Código" else codigo,
-                    new_value if col_name == "Código2" else codigo2,
-                    codigo,
-                    codigo2
-                )
-            )
-            conn.commit()
-
-        self.load_data()
-
-    def delete_row(self, item_id):
-        values = self.tree.item(item_id, "values")
-        codigo, codigo2 = values[0], values[2]
-
-        if messagebox.askyesno(
-            "Confirmar eliminación",
-            f"¿Eliminar equivalencia?\n(Código={codigo}, Código2={codigo2})"
-        ):
+        try:
             with sqlite3.connect(self.db_path, timeout=5) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM Equivalencias WHERE Cod_Asignatura = ? AND Cod_Asignatura_CC = ?",
-                    (codigo, codigo2)
-                )
-                conn.commit()
-            self.tree.delete(item_id)
+                query = """
+                    WITH RankedEquivalencias AS (
+                        SELECT 
+                            Cod_Asignatura AS Código,
+                            (SELECT Nom_Asignatura FROM Asignaturas_Info WHERE Cod_Asignatura = e.Cod_Asignatura) AS Asignatura,
+                            Cod_Asignatura_CC AS Código2,
+                            (SELECT Nom_Asignatura FROM Asignaturas_Info WHERE Cod_Asignatura = e.Cod_Asignatura_CC) AS Asignatura2,
+                            (SELECT Creditos FROM Asignaturas_Info WHERE Cod_Asignatura = e.Cod_Asignatura_CC) AS Créditos,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY Cod_Asignatura, Cod_Asignatura_CC 
+                                ORDER BY Cod_Asignatura, Cod_Asignatura_CC
+                            ) AS rn
+                        FROM Equivalencias e
+                    )
+                    SELECT Código, Asignatura, Código2, Asignatura2, Créditos
+                    FROM RankedEquivalencias
+                    WHERE rn = 1
+                    ORDER BY Código;
+                """
+                df = pd.read_sql_query(query, conn)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudieron cargar los datos:\n{str(e)}")
+            return
+
+        # Limpiar el contenedor y la lista de filas actuales
+        for child in self.table_container.winfo_children():
+            child.destroy()
+        
+        self.rows_info = []
+        
+        # Solo crear tabla si hay datos
+        if not df.empty:
+            self.create_equivalence_table(df.values)
+
+    def create_equivalence_table(self, equivalences):
+        # Crear cabecera de la tabla
+        headers_frame = ctk.CTkFrame(self.table_container, fg_color="white")
+        headers_frame.pack(fill="x", pady=5)
+
+        headers = ["Código", "Asignatura", "Código2", "Asignatura2", "Créditos", "Eliminar"]
+        col_widths = [70, 400, 70, 400, 70, 60]
+
+        for header, width in zip(headers, col_widths):
+            lbl = ctk.CTkLabel(headers_frame, text=header, font=("Arial", 12, "bold"))
+            lbl.pack(side="left", padx=5)
+            lbl.configure(width=width)
+
+        # Crear cada una de las filas con sus respectivos widgets
+        for row_index, equivalence in enumerate(equivalences, start=1):
+            self._create_equivalence_row(self.table_container, row_index, equivalence, col_widths)
+
+    def _create_equivalence_row(self, parent_container, row_index, equivalence, col_widths):
+        row_frame = ctk.CTkFrame(parent_container, fg_color="white")
+        row_frame.pack(fill="x", pady=2)
+
+        # Inicializar variables con datos provenientes de la BD
+        code_var   = StringVar(value=str(equivalence[0]))
+        name_var   = StringVar(value=str(equivalence[1]))
+        code2_var  = StringVar(value=str(equivalence[2]))
+        name2_var  = StringVar(value=str(equivalence[3]))
+        credit_var = StringVar(value=str(equivalence[4]))
+
+        # Configurar el grid para utilizar el ancho deseado en cada columna.
+        for i, w in enumerate(col_widths):
+            row_frame.grid_columnconfigure(i, minsize=w)
+
+        # Crear cada entry y colocarlo en la columna correspondiente
+        code_entry = ctk.CTkEntry(row_frame, textvariable=code_var, width=col_widths[0], height=30)
+        code_entry.grid(row=0, column=0, padx=5, pady=2, sticky="nsew")
+
+        name_entry = ctk.CTkEntry(row_frame, textvariable=name_var, width=col_widths[1], height=30)
+        name_entry.grid(row=0, column=1, padx=5, pady=2, sticky="nsew")
+
+        code2_entry = ctk.CTkEntry(row_frame, textvariable=code2_var, width=col_widths[2], height=30)
+        code2_entry.grid(row=0, column=2, padx=5, pady=2, sticky="nsew")
+
+        name2_entry = ctk.CTkEntry(row_frame, textvariable=name2_var, width=col_widths[3], height=30)
+        name2_entry.grid(row=0, column=3, padx=5, pady=2, sticky="nsew")
+
+        credit_entry = ctk.CTkEntry(row_frame, textvariable=credit_var, width=col_widths[4], height=30)
+        credit_entry.grid(row=0, column=4, padx=5, pady=2, sticky="nsew")
+
+        # Botón para eliminar la fila
+        delete_btn = ctk.CTkButton(row_frame, text="🗑", width=30, height=30,
+                                   font=("Arial", 14), hover_color="#FF0000")
+        delete_btn.grid(row=0, column=5, padx=(10, 5), pady=2)
+
+        # Diccionario que almacena la info relevante de la fila
+        row_data = {
+            "frame": row_frame,
+            "code_var": code_var,
+            "name_var": name_var,
+            "code2_var": code2_var,
+            "name2_var": name2_var,
+            "credit_var": credit_var,
+            "is_new": False,  # Esta fila proviene de la BD
+            "original_code": code_var.get(),
+            "original_code2": code2_var.get()
+        }
+
+        delete_btn.configure(command=lambda rd=row_data: self.delete_equivalence(rd))
+
+        # Vincular el evento FocusOut a cada campo para actualizar automáticamente la BD
+        code_entry.bind("<FocusOut>",   lambda e, rd=row_data: self.update_equivalence_in_db(rd))
+        name_entry.bind("<FocusOut>",   lambda e, rd=row_data: self.update_equivalence_in_db(rd))
+        code2_entry.bind("<FocusOut>",  lambda e, rd=row_data: self.update_equivalence_in_db(rd))
+        name2_entry.bind("<FocusOut>",  lambda e, rd=row_data: self.update_equivalence_in_db(rd))
+        credit_entry.bind("<FocusOut>", lambda e, rd=row_data: self.update_equivalence_in_db(rd))
+
+        self.rows_info.append(row_data)
 
     def add_equivalence(self):
-        # Ventana modal para ingresar datos de la equivalencia
-        self.add_window = ctk.CTkToplevel(self.window)
-        self.add_window.title("Agregar equivalencia/convalidación")
-        self.add_window.geometry("400x320")
+        # Crear una nueva fila con campos vacíos, indicando que es nueva.
+        new_row_data = {
+            "frame": None,
+            "code_var": StringVar(value=""),
+            "name_var": StringVar(value=""),
+            "code2_var": StringVar(value=""),
+            "name2_var": StringVar(value=""),
+            "credit_var": StringVar(value=""),
+            "is_new": True
+        }
 
-        # Etiqueta e ingreso para Código (primer asignatura)
-        label_codigo = ctk.CTkLabel(self.add_window, text="Código:")
-        label_codigo.pack(pady=(10, 0))
-        self.entry_codigo = ctk.CTkEntry(self.add_window)
-        self.entry_codigo.pack(pady=5)
+        row_frame = ctk.CTkFrame(self.table_container, fg_color="white")
+        row_frame.pack(fill="x", pady=2)
 
-        # Etiqueta e ingreso para Nombre Asignatura (primer asignatura)
-        label_nombre = ctk.CTkLabel(self.add_window, text="Nombre Asignatura:")
-        label_nombre.pack(pady=(10, 0))
-        self.entry_nombre = ctk.CTkEntry(self.add_window)
-        self.entry_nombre.pack(pady=5)
+        # Crear entries para la nueva fila
+        code_entry = ctk.CTkEntry(row_frame, textvariable=new_row_data["code_var"], width=70, height=30)
+        code_entry.grid(row=0, column=0, padx=5, pady=2, sticky="nsew")
 
-        # Etiqueta e ingreso para Código2
-        label_codigo2 = ctk.CTkLabel(self.add_window, text="Código2:")
-        label_codigo2.pack(pady=(10, 0))
-        self.entry_codigo2 = ctk.CTkEntry(self.add_window)
-        self.entry_codigo2.pack(pady=5)
+        name_entry = ctk.CTkEntry(row_frame, textvariable=new_row_data["name_var"], width=400, height=30)
+        name_entry.grid(row=0, column=1, padx=5, pady=2, sticky="nsew")
 
-        # Botón para buscar los datos de Asignatura2 y Créditos a partir del Código2
-        buscar_button = ctk.CTkButton(self.add_window, text="Buscar datos", command=self.buscar_datos_codigo2)
-        buscar_button.pack(pady=5)
+        code2_entry = ctk.CTkEntry(row_frame, textvariable=new_row_data["code2_var"], width=70, height=30)
+        code2_entry.grid(row=0, column=2, padx=5, pady=2, sticky="nsew")
 
-        # Etiquetas y entradas de solo lectura para Asignatura2 y Créditos (marcadas en gris)
-        label_asignatura2 = ctk.CTkLabel(self.add_window, text="Asignatura2:")
-        label_asignatura2.pack(pady=(10, 0))
-        self.entry_asignatura2 = ctk.CTkEntry(
-            self.add_window,
-            state="disabled",
-            placeholder_text="Se autocompleta",
-            fg_color="#D3D3D3"
-        )
-        self.entry_asignatura2.pack(pady=5)
+        name2_entry = ctk.CTkEntry(row_frame, textvariable=new_row_data["name2_var"], width=400, height=30)
+        name2_entry.grid(row=0, column=3, padx=5, pady=2, sticky="nsew")
 
-        label_creditos = ctk.CTkLabel(self.add_window, text="Créditos:")
-        label_creditos.pack(pady=(10, 0))
-        self.entry_creditos = ctk.CTkEntry(
-            self.add_window,
-            state="disabled",
-            placeholder_text="Se autocompleta",
-            fg_color="#D3D3D3"
-        )
-        self.entry_creditos.pack(pady=5)
+        credit_entry = ctk.CTkEntry(row_frame, textvariable=new_row_data["credit_var"], width=70, height=30)
+        credit_entry.grid(row=0, column=4, padx=5, pady=2, sticky="nsew")
 
-        # Botón para guardar la equivalencia
-        guardar_button = ctk.CTkButton(self.add_window, text="Guardar", command=self.guardar_equivalencia)
-        guardar_button.pack(pady=15)
+        # Botón de eliminación
+        delete_btn = ctk.CTkButton(row_frame, text="🗑", width=30, height=30,
+                                   font=("Arial", 14), hover_color="#FF0000",
+                                   command=lambda rd=new_row_data: self.delete_equivalence(rd))
+        delete_btn.grid(row=0, column=5, padx=(10, 5), pady=2)
 
-    def buscar_datos_codigo2(self):
-        codigo2 = self.entry_codigo2.get().strip()
-        if not codigo2:
-            messagebox.showerror("Error", "Ingrese un Código2 válido.")
-            return
+        new_row_data["frame"] = row_frame
 
-        with sqlite3.connect(self.db_path, timeout=5) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT Nom_Asignatura, Creditos FROM Asignaturas_Info WHERE Cod_Asignatura = ?",
-                (codigo2,)
-            )
-            resultado = cursor.fetchone()
+        # Vincular eventos para la nueva fila
+        code_entry.bind("<FocusOut>",   lambda e, rd=new_row_data: self.update_equivalence_in_db(rd))
+        name_entry.bind("<FocusOut>",   lambda e, rd=new_row_data: self.update_equivalence_in_db(rd))
+        code2_entry.bind("<FocusOut>",  lambda e, rd=new_row_data: self.update_equivalence_in_db(rd))
+        name2_entry.bind("<FocusOut>",  lambda e, rd=new_row_data: self.update_equivalence_in_db(rd))
+        credit_entry.bind("<FocusOut>", lambda e, rd=new_row_data: self.update_equivalence_in_db(rd))
 
-        if resultado:
-            asignatura2, creditos = resultado
-            # Actualizamos las entradas de solo lectura
-            self.entry_asignatura2.configure(state="normal")
-            self.entry_asignatura2.delete(0, "end")
-            self.entry_asignatura2.insert(0, asignatura2)
-            self.entry_asignatura2.configure(state="disabled")
+        self.rows_info.append(new_row_data)
 
-            self.entry_creditos.configure(state="normal")
-            self.entry_creditos.delete(0, "end")
-            self.entry_creditos.insert(0, creditos)
-            self.entry_creditos.configure(state="disabled")
-        else:
-            messagebox.showerror("Error", f"No se encontró asignatura para el Código2: {codigo2}")
+    def update_equivalence_in_db(self, row_data):
+        # Recoger los valores actuales
+        code   = row_data["code_var"].get().strip()
+        name   = row_data["name_var"].get().strip()
+        code2  = row_data["code2_var"].get().strip()
+        name2  = row_data["name2_var"].get().strip()
+        credit = row_data["credit_var"].get().strip()
 
-    def guardar_equivalencia(self):
-        codigo = self.entry_codigo.get().strip()
-        nombre = self.entry_nombre.get().strip()
-        codigo2 = self.entry_codigo2.get().strip()
-        asignatura2 = self.entry_asignatura2.get().strip()
-        creditos = self.entry_creditos.get().strip()
-
-        if not codigo or not nombre or not codigo2 or not asignatura2 or not creditos:
-            messagebox.showerror("Error", "Debe completar todos los campos y buscar los datos de Código2.")
+        # Solo se procede si TODOS los campos tienen valor
+        if not code or not name or not code2 or not name2 or not credit:
             return
 
         try:
             with sqlite3.connect(self.db_path, timeout=5) as conn:
                 cursor = conn.cursor()
-
-                # 1) Verificar si la equivalencia ya existe
-                cursor.execute("""
-                    SELECT COUNT(*)
-                    FROM Equivalencias
-                    WHERE Cod_Asignatura = ? 
-                      AND Cod_Asignatura_CC = ?
-                """, (codigo, codigo2))
+                
+                # Verificar si la equivalencia ya existe
+                cursor.execute(
+                    "SELECT COUNT(*) FROM Equivalencias WHERE Cod_Asignatura = ? AND Cod_Asignatura_CC = ?",
+                    (code, code2)
+                )
                 existe_equivalencia = cursor.fetchone()[0]
 
-                if existe_equivalencia > 0:
-                    messagebox.showerror(
-                        "Error",
-                        "Esta equivalencia/convalidación ya existe en la base de datos."
+                if row_data.get("is_new", False):
+                    if existe_equivalencia > 0:
+                        messagebox.showwarning("Duplicado", "Esta equivalencia ya existe en la base de datos.")
+                        return
+
+                    # Eliminar cualquier equivalencia preexistente con los mismos códigos
+                    cursor.execute(
+                        "DELETE FROM Equivalencias WHERE Cod_Asignatura = ? AND Cod_Asignatura_CC = ?",
+                        (code, code2)
                     )
-                    return
 
-                # 2) Verificar si la asignatura (código) ya existe en Asignaturas_Info
-                cursor.execute("""
-                    SELECT COUNT(*) 
-                    FROM Asignaturas_Info 
-                    WHERE Cod_Asignatura = ?
-                """, (codigo,))
-                existe_asignatura = cursor.fetchone()[0]
-
-                if existe_asignatura == 0:
-                    # No existe: Insertar en Asignaturas_Info
-                    cursor.execute("""
-                        INSERT INTO Asignaturas_Info 
-                            (Cod_Asignatura, Nom_Asignatura, Creditos) 
-                        VALUES (?, ?, 0)
-                    """, (codigo, nombre))
+                    # Inserción en la base de datos para filas nuevas
+                    cursor.execute(
+                        "INSERT INTO Equivalencias (Cod_Asignatura, Cod_Asignatura_CC) VALUES (?, ?)",
+                        (code, code2)
+                    )
+                    
+                    # Insertar o actualizar información de asignaturas
+                    cursor.execute(
+                        """INSERT OR REPLACE INTO Asignaturas_Info 
+                        (Cod_Asignatura, Nom_Asignatura, Creditos) 
+                        VALUES (?, ?, ?)""",
+                        (code, name, credit)
+                    )
+                    cursor.execute(
+                        """INSERT OR REPLACE INTO Asignaturas_Info 
+                        (Cod_Asignatura, Nom_Asignatura, Creditos) 
+                        VALUES (?, ?, ?)""",
+                        (code2, name2, credit)
+                    )
+                    
+                    row_data["is_new"] = False
+                    row_data["original_code"]  = code
+                    row_data["original_code2"] = code2
+                    messagebox.showinfo("Guardado", "La nueva equivalencia ha sido guardada correctamente.")
+                
                 else:
-                    # Sí existe: Actualizar nombre y poner créditos en 0
-                    cursor.execute("""
-                        UPDATE Asignaturas_Info 
-                        SET Nom_Asignatura = ?, Creditos = 0 
-                        WHERE Cod_Asignatura = ?
-                    """, (nombre, codigo))
-
-                # 3) Insertar la equivalencia
-                cursor.execute("""
-                    INSERT INTO Equivalencias (Cod_Asignatura, Cod_Asignatura_CC) 
-                    VALUES (?, ?)
-                """, (codigo, codigo2))
-
+                    # Actualizar filas existentes
+                    orig_code  = row_data.get("original_code", code)
+                    orig_code2 = row_data.get("original_code2", code2)
+                    
+                    cursor.execute(
+                        "UPDATE Equivalencias SET Cod_Asignatura = ?, Cod_Asignatura_CC = ? "
+                        "WHERE Cod_Asignatura = ? AND Cod_Asignatura_CC = ?",
+                        (code, code2, orig_code, orig_code2)
+                    )
+                    
+                    cursor.execute(
+                        "UPDATE Asignaturas_Info SET Nom_Asignatura = ?, Creditos = ? "
+                        "WHERE Cod_Asignatura = ?",
+                        (name, credit, orig_code)
+                    )
+                    
+                    cursor.execute(
+                        "UPDATE Asignaturas_Info SET Nom_Asignatura = ?, Creditos = ? "
+                        "WHERE Cod_Asignatura = ?",
+                        (name2, credit, orig_code2)
+                    )
+                    
+                    row_data["original_code"]  = code
+                    row_data["original_code2"] = code2
+                
                 conn.commit()
-
+        
         except Exception as e:
-            messagebox.showerror("Error", f"Error al guardar la equivalencia:\n{e}")
-            return
+            messagebox.showerror("Error de base de datos",
+                                 f"No se pudo actualizar la equivalencia:\n{str(e)}")
+        
+        # Recargar los datos después de guardar
+        finally:
+            self.load_data()
 
-        # Cerramos la ventana de agregar y refrescamos la tabla
-        self.add_window.destroy()
-        self.load_data()
-
+    def delete_equivalence(self, row_data):
+        code  = row_data["code_var"].get().strip()
+        code2 = row_data["code2_var"].get().strip()
+        if messagebox.askyesno("Confirmar eliminación",
+                               f"¿Eliminar equivalencia?\n(Código={code}, Código2={code2})"):
+            try:
+                with sqlite3.connect(self.db_path, timeout=5) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "DELETE FROM Equivalencias WHERE Cod_Asignatura = ? AND Cod_Asignatura_CC = ?",
+                        (code, code2)
+                    )
+                    conn.commit()
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo eliminar la equivalencia:\n{str(e)}")
+            
+            # Eliminar la fila de la interfaz:
+            if row_data in self.rows_info:
+                self.rows_info.remove(row_data)
+            row_data["frame"].destroy()
+            self.load_data()
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("Light")

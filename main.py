@@ -27,18 +27,18 @@ main_label.pack(pady=10)
 # Funciones para abrir nuevas ventanas
 def abrir_actualizar_plan():
     root.withdraw()  # Oculta la ventana principal
-    UpdatePlanWindow(root)  # Abre la ventana de actualizar plan
+    UpdatePlanWindow(root)  # Abre la ventana de actualizar plan    
 
 def abrir_actualizar_equivalencias():
-    #root.withdraw()  # Oculta la ventana principal
+    root.withdraw()  # Oculta la ventana principal
     UpdateEquivalencesWindow(root)  # Abre la ventana de equivalencias
 
 def consultar_estudiantes_aprobados():
-    #root.withdraw()  # Oculta la ventana principal
+    root.withdraw()  # Oculta la ventana principal
     ConsultarEstudiantesWindow(root)  # Abre la ventana para consultar estudiantes
 
 def abrir_nuevo_estudio():
-    #root.withdraw()  # Oculta la ventana principal
+    root.withdraw()  # Oculta la ventana principal  
     NuevoEstudioWindow(root)  # Abre la ventana para realizar el estudio de doble titulación
 
 # Botones del menú principal
@@ -65,6 +65,7 @@ for text in buttons_text:
     button = ctk.CTkButton(root, text=text, font=("Arial", 16), height=40, fg_color="#65C2C6",
                            hover_color="#519899", text_color="black", corner_radius=20, command=command)
     button.pack(fill="x", padx=50, pady=10)
+
 
 # Ejecutar la ventana principal
 root.mainloop()
