@@ -1,7 +1,20 @@
+# actualizar_plan.py
 import customtkinter as ctk
 import sqlite3
-from tkinter import Toplevel, StringVar, IntVar, Canvas, Scrollbar, Frame, Label
-from plan_estudios_actual import *
+from plan_estudios_actual import *  # Se asume que este módulo no requiere cambios
+from tkinter import Toplevel, Frame, Label, Scrollbar, Canvas, StringVar, IntVar, messagebox
+import sys
+import os
+
+# Función para obtener la ruta base
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
+BASE_PATH = get_base_path()
+DB_PATH = os.path.join(BASE_PATH, "DatosApp.db")
 
 class PlanData:
     def __init__(self, data):
@@ -17,24 +30,24 @@ class PlanData:
         return None
 
 class UpdatePlanWindow:
-    def __init__(self, parent):
-        self.parent = parent  
-        components = cargar_componentes()  
+    def __init__(self, parent, plan_text):
+        self.parent = parent
+        self.plan_text = plan_text
+        components = cargar_componentes()
         self.plan_data = PlanData(components)
 
-        self.window = Toplevel(parent)
+        self.window = ctk.CTkToplevel(parent)
         self.window.title("Actualizar Plan de Estudios en Origen")
-        self.window.geometry("1300x700")
+        self.window.geometry("1150x650")
 
         self.selected_component = None
         self.grouping_var = StringVar()
-        self.current_grouping_name = None  # Nombre de la agrupación seleccionada
+        self.current_grouping_name = None  # Agrupación seleccionada
 
         # Encabezado
         header_frame = ctk.CTkFrame(self.window, fg_color="#65C2C6", corner_radius=8)
         header_frame.pack(fill="x", pady=(10, 5))
 
-        # Botón para regresar al menú principal
         menu_button = ctk.CTkButton(
             header_frame,
             text="Menú principal",
@@ -43,14 +56,13 @@ class UpdatePlanWindow:
             text_color="black",
             hover_color="#E0E0E0",
             corner_radius=8,
-            command=self.return_to_main_menu  # Regresar al menú principal
+            command=self.return_to_main_menu
         )
         menu_button.pack(side="left", padx=10, pady=10)
 
-        # Título del programa
         title_label = ctk.CTkLabel(
             header_frame,
-            text="Programa: Ciencias de la Computación (2933)",
+            text=self.plan_text,
             font=("Arial", 16, "bold"),
             text_color="black",
         )
@@ -71,9 +83,7 @@ class UpdatePlanWindow:
             lambda e: scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all"))
         )
 
-        # -------------------------------------------
-        # Construcción del resumen (tabla de encabezado)
-        # -------------------------------------------
+        # Resumen (tabla de encabezado)
         self.summary_frame = ctk.CTkFrame(scroll_frame, fg_color="#F5F5F5", corner_radius=8)
         self.summary_frame.pack(fill="x", padx=10, pady=10)
         self.refresh_summary()
@@ -81,14 +91,37 @@ class UpdatePlanWindow:
         self.subject_table_frame = ctk.CTkFrame(scroll_frame)
         self.subject_table_frame.pack_forget()
 
-    # Método para refrescar el resumen (incluye la suma de obligatorios y optativos)
+    # --- NUEVO ---
+    def get_groupings_from_db(self, tipologia):
+        """Consulta la BD y retorna la lista de nombres de agrupaciones según la tipología."""
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT Nom_Agrupacion
+                FROM Agrupaciones_CC
+                WHERE Tipologia = ?
+            """, (tipologia,))
+            rows = cursor.fetchall()
+        return [r[0] for r in rows]
+
+    def tipologia_from_component(self, component_name):
+        """Retorna la tipología según el componente seleccionado."""
+        if component_name == "Fundamentación":
+            return "Fundamentación"
+        elif component_name == "Disciplinar":
+            return "Disciplinar"
+        elif component_name == "Trabajo de Grado (P)":
+            return "Trabajo de grado"
+        elif component_name == "Libre Elección (L)":
+            return "Libre Elección"
+        return None
+    # --- FIN NUEVO ---
+
     def refresh_summary(self):
-        # Limpia el summary_frame
         for widget in self.summary_frame.winfo_children():
             widget.destroy()
 
-        # Consulta dinámica a la BD para obtener sumas
-        with sqlite3.connect("DatosApp.db") as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT Tipologia, 
@@ -152,7 +185,7 @@ class UpdatePlanWindow:
                 lbl.grid(row=2, column=col_start, sticky="nsew", padx=1, pady=1)
                 col_start += 1
 
-        # Reincorporamos los labels clicables para cada componente
+        # Labels clicables para cada componente
         self.fundamentacion_label = Label(
             self.summary_frame,
             text="Fundamentación",
@@ -198,6 +231,7 @@ class UpdatePlanWindow:
         self.le_label.bind("<Leave>", lambda e: self.le_label.config(bg="#D3D3D3"))
 
     def select_component(self, component_name):
+        # Restaurar color del componente previamente seleccionado
         if self.selected_component == "Fundamentación":
             self.fundamentacion_label.config(bg="#D3D3D3")
         elif self.selected_component == "Disciplinar":
@@ -207,8 +241,10 @@ class UpdatePlanWindow:
         elif self.selected_component == "Libre Elección (L)":
             self.le_label.config(bg="#D3D3D3")
 
+        # Actualizar el componente seleccionado
         self.selected_component = component_name
 
+        # Cambiar color del label para indicar la selección actual
         if component_name == "Fundamentación":
             self.fundamentacion_label.config(bg="#A0C4D7")
         elif component_name == "Disciplinar":
@@ -218,21 +254,33 @@ class UpdatePlanWindow:
         else:
             self.le_label.config(bg="#A0C4D7")
 
+        # Mostramos el frame donde se verá la tabla de agrupaciones/asignaturas
         self.subject_table_frame.pack(fill="x", padx=10, pady=10)
 
-        if component_name == "Trabajo de Grado (P)":
-            grouping_name = "TRABAJO DE GRADO"
-        elif component_name == "Libre Elección (L)":
-            grouping_name = "LIBRE ELECCIÓN"
-        else:
-            group_names = [g["nombre"] for g in self.plan_data.get_groupings(component_name)]
-            if not group_names:
-                for widget in self.subject_table_frame.winfo_children():
-                    widget.destroy()
-                return
-            grouping_name = group_names[0]
+        tipologia = self.tipologia_from_component(component_name)
+        group_names = self.get_groupings_from_db(tipologia)
 
-        self.load_grouping(grouping_name, update_option_menu=True)
+        # Si no hay agrupaciones, limpiar el frame y mostrar botón para añadir agrupación
+        if not group_names:
+            for widget in self.subject_table_frame.winfo_children():
+                widget.destroy()
+
+            top_frame = ctk.CTkFrame(self.subject_table_frame, fg_color="#F5F5F5")
+            top_frame.pack(fill="x", padx=5, pady=5)
+
+            if self.selected_component in ["Fundamentación", "Disciplinar"]:
+                add_grouping_button = ctk.CTkButton(
+                    top_frame,
+                    text="Añadir nueva agrupación",
+                    fg_color="#65C2C6",
+                    text_color="black",
+                    font=("Arial", 14, "bold"),
+                    command=self.show_add_grouping_modal
+                )
+                add_grouping_button.pack(side="left", padx=10, pady=5)
+        else:
+            grouping_name = group_names[0]
+            self.load_grouping(grouping_name, update_option_menu=True)
 
     def load_grouping(self, grouping_name, update_option_menu=False):
         for widget in self.subject_table_frame.winfo_children():
@@ -246,8 +294,9 @@ class UpdatePlanWindow:
         lbl = ctk.CTkLabel(top_frame, text="Agrupación:", font=("Arial", 12), text_color="black")
         lbl.pack(side="left", padx=5, pady=5)
 
-        # Menú de selección de agrupación
-        group_names = [g["nombre"] for g in self.plan_data.get_groupings(self.selected_component)]
+        tipologia = self.tipologia_from_component(self.selected_component)
+        group_names = self.get_groupings_from_db(tipologia)
+
         grouping_menu = ctk.CTkOptionMenu(
             top_frame,
             variable=self.grouping_var,
@@ -259,8 +308,28 @@ class UpdatePlanWindow:
         self.grouping_var.set(grouping_name)
         grouping_menu.pack(side="left", padx=5, pady=5)
 
-        # Campo editable "Optativos:" (Cant_Optativos)
-        with sqlite3.connect("DatosApp.db") as conn:
+        # Se muestran botones para Añadir y Eliminar agrupación solo en Fundamentación y Disciplinar
+        if self.selected_component in ["Fundamentación", "Disciplinar"]:
+            add_grouping_button = ctk.CTkButton(
+                top_frame,
+                text="Añadir nueva agrupación",
+                fg_color="#65C2C6",
+                text_color="black",
+                font=("Arial", 14, "bold"),
+                command=self.show_add_grouping_modal
+            )
+            add_grouping_button.pack(side="left", padx=10, pady=5)
+            delete_grouping_button = ctk.CTkButton(
+                top_frame,
+                text="Eliminar Agrupación",
+                fg_color="#FF6961",
+                text_color="black",
+                font=("Arial", 14, "bold"),
+                command=self.delete_current_grouping
+            )
+            delete_grouping_button.pack(side="left", padx=10, pady=5)
+
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT Cant_Optativos FROM Agrupaciones_CC WHERE Nom_Agrupacion = ?",
@@ -274,8 +343,18 @@ class UpdatePlanWindow:
         optativos_entry = ctk.CTkEntry(top_frame, textvariable=self.optativos_var, width=60)
         optativos_entry.pack(side="left", padx=5, pady=5)
         optativos_entry.bind("<FocusOut>", lambda e: self.update_optativos_db())
+        
+        # --- Botón para actualizar los créditos optativos en cualquier componente ---
+        guardar_button = ctk.CTkButton(
+            top_frame,
+            text="💾",
+            command=self.update_optativos_db,
+            width=40,
+            height=30,
+            font=("Arial", 14)
+        )
+        guardar_button.pack(side="left", padx=5, pady=5)
 
-        # Mostrar "Obligatorios:" solo para componentes distintos de Trabajo de Grado (P) y Libre Elección (L)
         if self.selected_component not in ["Trabajo de Grado (P)", "Libre Elección (L)"]:
             self.credits_b_var = StringVar(value="Obligatorios: 0")
             obligatorios_label = ctk.CTkLabel(top_frame, textvariable=self.credits_b_var, font=("Arial", 12))
@@ -294,15 +373,14 @@ class UpdatePlanWindow:
         )
         add_button.pack(side="top", padx=5, pady=5)
 
-
-        subjects = self.get_subjects_from_db(self.current_grouping_name)
+        subjects = self.get_subjects_from_db_subjects(self.current_grouping_name)
         self.create_subject_table(subjects, self.selected_component)
 
     def on_grouping_selected(self, selected_group):
         self.load_grouping(selected_group, update_option_menu=False)
 
-    def get_subjects_from_db(self, nom_agrupacion):
-        with sqlite3.connect("DatosApp.db") as conn:
+    def get_subjects_from_db_subjects(self, nom_agrupacion):
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -315,8 +393,7 @@ class UpdatePlanWindow:
                 (nom_agrupacion,)
             )
             rows = cursor.fetchall()
-        subjects = [list(r) for r in rows]
-        return subjects
+        return [list(r) for r in rows]
 
     def update_optativos_db(self):
         try:
@@ -324,7 +401,7 @@ class UpdatePlanWindow:
         except ValueError:
             new_opt = 0
         if self.current_grouping_name:
-            with sqlite3.connect("DatosApp.db") as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "UPDATE Agrupaciones_CC SET Cant_Optativos = ? WHERE Nom_Agrupacion = ?",
@@ -334,7 +411,6 @@ class UpdatePlanWindow:
         self.refresh_summary()
 
     def update_obligatorios_db(self):
-        # Solo para componentes que calculan obligatorios
         if self.selected_component not in ["Trabajo de Grado (P)", "Libre Elección (L)"]:
             total_obl = 0
             for row_data in self.rows_info:
@@ -344,7 +420,7 @@ class UpdatePlanWindow:
                     creditos = 0
                 if row_data["b_var"].get() == 1:
                     total_obl += creditos
-            with sqlite3.connect("DatosApp.db") as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "UPDATE Agrupaciones_CC SET Cant_Obligatorios = ? WHERE Nom_Agrupacion = ?",
@@ -463,15 +539,15 @@ class UpdatePlanWindow:
 
     def update_credit_count(self):
         if self.selected_component not in ["Trabajo de Grado (P)", "Libre Elección (L)"]:
-            total_obligatorios = 0
+            total_obl = 0
             for row_data in self.rows_info:
                 try:
                     creditos = int(row_data["credit_var"].get())
                 except ValueError:
                     creditos = 0
                 if row_data["b_var"].get() == 1:
-                    total_obligatorios += creditos
-            self.credits_b_var.set(f"Obligatorios: {total_obligatorios}")
+                    total_obl += creditos
+            self.credits_b_var.set(f"Obligatorios: {total_obl}")
 
     def update_subject_in_db(self, row_data):
         old_code = row_data["original_code"]
@@ -501,7 +577,7 @@ class UpdatePlanWindow:
         else:
             typology = "Libre Elección"
 
-        with sqlite3.connect("DatosApp.db") as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -525,48 +601,27 @@ class UpdatePlanWindow:
         self.update_obligatorios_db()
         self.refresh_summary()
 
-    def update_obligatorios_db(self):
-        # Para componentes que calculan obligatorios
-        if self.selected_component not in ["Trabajo de Grado (P)", "Libre Elección (L)"]:
-            total_obl = 0
-            for row_data in self.rows_info:
-                try:
-                    creditos = int(row_data["credit_var"].get())
-                except ValueError:
-                    creditos = 0
-                if row_data["b_var"].get() == 1:
-                    total_obl += creditos
-            with sqlite3.connect("DatosApp.db") as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE Agrupaciones_CC SET Cant_Obligatorios = ? WHERE Nom_Agrupacion = ?",
-                    (total_obl, self.current_grouping_name)
-                )
-                conn.commit()
-
     def delete_subject(self, row_data):
         if row_data in self.rows_info:
             self.rows_info.remove(row_data)
         old_code = row_data["original_code"]
-        with sqlite3.connect("DatosApp.db") as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM Asignaturas_CC WHERE Cod_Asignatura_CC = ?", (old_code,))
             cursor.execute("DELETE FROM Asignaturas_Info WHERE Cod_Asignatura = ?", (old_code,))
             conn.commit()
         row_data["frame"].destroy()
-        # Actualizamos el conteo de créditos obligatorios en la BD
         self.update_obligatorios_db()
         self.update_credit_count()
         self.refresh_summary()
         self.load_grouping(self.current_grouping_name)
-
 
     def add_subject(self, code, name, credits):
         if self.selected_component in ["Trabajo de Grado (P)", "Libre Elección (L)"]:
             tipo = "TRABAJO DE GRADO" if self.selected_component == "Trabajo de Grado (P)" else "Libre Elección"
         else:
             tipo = None
-        with sqlite3.connect("DatosApp.db") as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -586,13 +641,84 @@ class UpdatePlanWindow:
         self.load_grouping(self.current_grouping_name)
         self.refresh_summary()
 
+    def show_add_grouping_modal(self):
+        self.add_grouping_window = ctk.CTkToplevel(self.window)
+        self.add_grouping_window.title("Nueva Agrupación")
+
+        # Hace que la ventana modal sea hija de la ventana principal y se mantenga al frente.
+        self.add_grouping_window.transient(self.window)
+        self.add_grouping_window.grab_set()
+        self.add_grouping_window.focus_set()
+
+        label = ctk.CTkLabel(self.add_grouping_window, text="Nombre de la nueva agrupación:")
+        label.pack(padx=10, pady=10)
+
+        self.new_grouping_name_var = StringVar()
+        entry = ctk.CTkEntry(self.add_grouping_window, textvariable=self.new_grouping_name_var, width=200)
+        entry.pack(padx=10, pady=10)
+
+        create_button = ctk.CTkButton(
+            self.add_grouping_window,
+            text="Crear agrupación",
+            command=self.create_new_grouping
+        )
+        create_button.pack(padx=10, pady=10)
+
+    def create_new_grouping(self):
+        new_grouping_name = self.new_grouping_name_var.get().strip()
+        if not new_grouping_name:
+            return
+
+        tipologia = "Fundamentación" if self.selected_component == "Fundamentación" else "Disciplinar"
+
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO Agrupaciones_CC (Nom_Agrupacion, Tipologia, Cant_Obligatorios, Cant_Optativos)
+                   VALUES (?, ?, 0, 0)""",
+                (new_grouping_name, tipologia)
+            )
+            conn.commit()
+
+        self.add_grouping_window.destroy()
+        self.refresh_summary()
+        self.load_grouping(new_grouping_name, update_option_menu=True)
+
+    def delete_current_grouping(self):
+        answer = messagebox.askyesno("Confirmación", f"¿Estás seguro de eliminar la agrupación '{self.current_grouping_name}'?")
+        if not answer:
+            return
+
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            # Obtiene los códigos de las asignaturas asociadas a la agrupación
+            cursor.execute("SELECT Cod_Asignatura_CC FROM Asignaturas_CC WHERE Nom_Agrupacion = ?", (self.current_grouping_name,))
+            subject_codes = cursor.fetchall()
+            # Elimina la agrupación
+            cursor.execute("DELETE FROM Agrupaciones_CC WHERE Nom_Agrupacion = ?", (self.current_grouping_name,))
+            # Elimina las asignaturas de la agrupación
+            cursor.execute("DELETE FROM Asignaturas_CC WHERE Nom_Agrupacion = ?", (self.current_grouping_name,))
+            # Elimina la información de las asignaturas correspondientes
+            for code in subject_codes:
+                cursor.execute("DELETE FROM Asignaturas_Info WHERE Cod_Asignatura = ?", code)
+            conn.commit()
+
+        self.current_grouping_name = None
+        self.refresh_summary()
+        tipologia = self.tipologia_from_component(self.selected_component)
+        group_names = self.get_groupings_from_db(tipologia)
+        if group_names:
+            self.load_grouping(group_names[0], update_option_menu=True)
+        else:
+            for widget in self.subject_table_frame.winfo_children():
+                widget.destroy()
+
     def return_to_main_menu(self):
-        """Función para regresar al menú principal."""
-        self.window.destroy()  # Cierra la ventana actual
-        self.parent.deiconify()  # Muestra la ventana principal de nuevo
+        self.window.destroy()
+        self.parent.deiconify()
 
 if __name__ == "__main__":
     root = ctk.CTk()
-    root.geometry("1200x700")
-    UpdatePlanWindow(root)
+    root.geometry("1100x700")
+    UpdatePlanWindow(root, "Programa: Ciencias de la Computación (2933)")
     root.mainloop()

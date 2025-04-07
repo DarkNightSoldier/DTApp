@@ -1,1 +1,5 @@
-*.pyc 
+*.pyc
+/Estudios
+/Uploaded_Files
+/HistAcad
+/NHistAcad
